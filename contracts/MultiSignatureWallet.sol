@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.5.0;
 
 contract MultiSignatureWallet {
@@ -19,6 +20,8 @@ contract MultiSignatureWallet {
     event Deposit(address indexed sender, uint value);
     event Submmision(uint indexed transctionId);
     event Confirmation(address indexed sender, uint indexed transactionId);
+    event Execution(uint indexed transactionId);
+    event ExecutionFailure(uint indexed transactionId);
     
     modifier validRequirement(uint ownerCount, uint _required) {
         if (_required > ownerCount || _required == 0 || ownerCount == 0)
@@ -46,8 +49,8 @@ contract MultiSignatureWallet {
     constructor(address[] memory _owners, uint _required) public 
     validRequirement(_owners.length, _required)
     {
-        for (uint i = 0; i < _owners.length; i++) {
-            isOwner[_owners[i]] = true;    
+        for (uint i=0; i<_owners.length; i++) {
+           isOwner[_owners[i]] = true;
         }
         
         owners = _owners;
@@ -94,6 +97,19 @@ contract MultiSignatureWallet {
     public
     {
         require(transactions[transactionId].executed == false);
+
+        if (isConfirmed(transactionId)) {
+            Transaction storage t = transactions[transactionId];
+            t.executed = true;
+            (bool success, bytes memory returnedData) = t.destination.call.value(t.value)(t.data);
+            if (success) {
+                emit Execution(transactionId);
+            } else {
+                emit ExecutionFailure(transactionId);
+                t.executed = false;
+            }
+        }
+
     }
 
 		/*
@@ -107,7 +123,16 @@ contract MultiSignatureWallet {
     view
     returns (bool)
     {
-        
+        uint count = 0;
+        for (uint i = 0; i < owners.length; i++) {
+            if (confirmations[transactionId][owners[i]]) {
+                count += 1;
+            }
+            
+            if (count == required) {
+                return true;
+            }
+        }
     }
 
     /// @dev Adds a new transaction to the transaction mapping, if transaction does not exist yet.
@@ -127,7 +152,7 @@ contract MultiSignatureWallet {
             executed: false
         });
         transactionCount += 1;
-        emit Submmision(transactionId)
+        emit Submmision(transactionId);
     }
     
 }
